@@ -105,6 +105,8 @@ class DecisionTreeClassification(GeneralDecisionTree):
         :param max_gini, int, (default=1) maximum gini you allow for a split to happen
         """
 
+        print(f"growing clasic tree tree {self.name}")
+
         if (y.size < min_size) or (best_gini == 0.0):
             # stopping criterion: node be smaller than min size
             # if node is pure, don't split
@@ -205,6 +207,8 @@ class DecisionTreeClassification(GeneralDecisionTree):
         if data_type == 'c':
             possible_thresholds = find_splits(possible_thresholds)
 
+        print(f"Classic Inner loop size:{possible_thresholds.shape}")
+
         for threshold in possible_thresholds:
 
             if data_type == 'c':
@@ -294,10 +298,15 @@ class KeDTClassification(GeneralDecisionTree):
         :param current_depth, used in recursion to keep track of tree depth
         :param max_gini, int, (default=1) maximum gini you allow for a split to happen
         """
+        print(f"growing KDE tree tree {self.name} x shape={X.shape}")
+
         assert all(data_t == 'n' for data_t in data_types), "KeDTClassification currently only works for numeric data"
         assert classes.size == 2, "KeDTClassification currently only works for binary classification"
 
-        if (y.size < min_size) or (best_gini == 0.0):
+        _, class_pop = np.unique(y, return_counts=True)
+        print(f"class_pop={class_pop}")
+
+        if (y.size < min_size) or (best_gini == 0.0) or class_pop[0]<2 or class_pop[1]<2:
             # stopping criterion: node be smaller than min size
             # if node is pure, don't split
             return
@@ -341,8 +350,11 @@ class KeDTClassification(GeneralDecisionTree):
                 self.split_feature = None
                 return
 
+            print(f"left_x size={left_x.shape}  right_x size={right_x.shape}")
+
             # grow left child
-            left_tree = DecisionTreeClassification(name=f"{self.name}_{best_p_ind}_child1",
+
+            left_tree = KeDTClassification(name=f"{self.name}_{best_p_ind}_child1",
                                                    class_counts=np.array(best_left_dist),
                                                    n_subset=np.sum(best_left_dist))
 
@@ -351,7 +363,8 @@ class KeDTClassification(GeneralDecisionTree):
                                 current_depth=current_depth + 1, metric_func=metric_func)
 
             # grow right child
-            right_tree = DecisionTreeClassification(name=f"{self.name}_{best_p_ind}_child2",
+
+            right_tree = KeDTClassification(name=f"{self.name}_{best_p_ind}_child2",
                                                     class_counts=np.array(best_right_dist),
                                                     n_subset=np.sum(best_right_dist))
 
@@ -390,6 +403,8 @@ class KeDTClassification(GeneralDecisionTree):
         x_class_1 = feature_values[(labels == 1).flatten()]
         x_class_0 = feature_values[(labels == 0).flatten()]
 
+        print(f"x_class_0={x_class_0.size}  x_class_1={x_class_1.size}")
+
         kernel_1 = gaussian_kde(x_class_1)
         kernel_0 = gaussian_kde(x_class_0)
 
@@ -404,11 +419,15 @@ class KeDTClassification(GeneralDecisionTree):
 
         D_lall = lambda_div * D_l1 + (1 - lambda_div) * D_l0
 
-        trimmed_D = D_lall[5:(D_lall.size - 5)]
-        trimmed_x_vals = x_vals[5:(x_vals.size - 5)]
-        ind_min = np.argpartition(trimmed_D, 4)[0:4]
+        top_n = 5
+
+        trimmed_D = D_lall[top_n:(D_lall.size - top_n)]
+        trimmed_x_vals = x_vals[top_n:(x_vals.size - top_n)]
+        ind_min = np.argpartition(trimmed_D, top_n-1)[0:top_n-1]
 
         top_5_partitions = trimmed_x_vals[ind_min]
+
+        print(f"KDE Inner loop size:{top_5_partitions.shape}")
         for threshold in top_5_partitions:
 
             selection = feature_values > threshold
